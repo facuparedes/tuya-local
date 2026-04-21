@@ -46,8 +46,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          REPO="${{ github.repository }}"
           TAG="v$(date +%Y.%-m.%-d)-update-dps"
-          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release delete "$TAG" --repo "$REPO" --yes 2>/dev/null || true
           git tag -f "$TAG"
           git push origin "$TAG" --force
-          gh release create "$TAG" --title "tuya-local + update_dps (synced $(date +%Y-%m-%d))" --notes "Auto-synced with upstream make-all/tuya-local + update_dps service patch."
+          gh release create "$TAG" --repo "$REPO" --target feature/expose-update-dps-service --title "tuya-local + update_dps (synced $(date +%Y-%m-%d))" --notes "Auto-synced with upstream make-all/tuya-local + update_dps service patch."
