@@ -38,11 +38,28 @@ NOT_FOUND = "Configuration file for %s not found"
 
 SERVICE_UPDATE_DPS = "update_dps"
 SERVICE_UPDATE_DPS_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_DEVICE_ID): cv.string,
-        vol.Optional("dps"): list,
-    }
+    vol.All(
+        {
+            vol.Optional(CONF_DEVICE_ID): cv.string,
+            vol.Optional("entity_id"): cv.entity_id,
+            vol.Optional("dps"): list,
+        },
+        cv.has_at_least_one_key(CONF_DEVICE_ID, "entity_id"),
+    )
 )
+
+
+def _find_device_and_dps(hass, entity_id):
+    """Find the TuyaLocalDevice and its DPS from an entity_id."""
+    for dev_data in hass.data.get(DOMAIN, {}).values():
+        if not isinstance(dev_data, dict) or "device" not in dev_data:
+            continue
+        device = dev_data["device"]
+        for child in device._children:
+            if getattr(child, "entity_id", None) == entity_id:
+                dps = [int(dp.id) for dp in child._config.dps()]
+                return device, dps
+    return None, None
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -50,24 +67,31 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
     async def _handle_update_dps(call: ServiceCall):
         """Handle update_dps service call - sends UPDATEDPS command."""
-        dev_id = call.data[CONF_DEVICE_ID]
-        data = hass.data.get(DOMAIN, {}).get(dev_id)
-        if not data or "device" not in data:
-            raise HomeAssistantError(f"Device {dev_id} not found")
+        entity_id = call.data.get("entity_id")
+        dev_id = call.data.get(CONF_DEVICE_ID)
 
-        device = data["device"]
+        if entity_id:
+            device, entity_dps = _find_device_and_dps(hass, entity_id)
+            if device is None:
+                raise HomeAssistantError(f"Entity {entity_id} not found")
+            dps = call.data.get("dps") or entity_dps
+        else:
+            data = hass.data.get(DOMAIN, {}).get(dev_id)
+            if not data or "device" not in data:
+                raise HomeAssistantError(f"Device {dev_id} not found")
+            device = data["device"]
+            dps = call.data.get("dps")
+            if dps is None:
+                dps = device._force_dps or [18, 19, 20]
+
         if not device.has_returned_state:
-            raise HomeAssistantError(f"Device {dev_id} is not connected")
-
-        dps = call.data.get("dps")
-        if dps is None:
-            dps = device._force_dps or [18, 19, 20]
+            raise HomeAssistantError("Device is not connected")
 
         try:
             async with device._api_lock:
                 await hass.async_add_executor_job(device._api.updatedps, dps, True)
         except Exception as e:
-            _LOGGER.warning("update_dps failed for %s: %s", dev_id, e)
+            _LOGGER.warning("update_dps failed: %s", e)
 
     hass.services.async_register(
         DOMAIN,
