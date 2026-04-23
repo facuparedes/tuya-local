@@ -39,14 +39,17 @@ NOT_FOUND = "Configuration file for %s not found"
 
 SERVICE_UPDATE_DPS = "update_dps"
 SERVICE_UPDATE_DPS_SCHEMA = vol.Schema(
-    vol.All(
-        {
-            vol.Optional(CONF_DEVICE_ID): cv.string,
-            vol.Optional("entity_id"): cv.entity_id,
-            vol.Optional("dps"): list,
-        },
-        cv.has_at_least_one_key(CONF_DEVICE_ID, "entity_id"),
-    )
+    {
+        vol.Required(CONF_DEVICE_ID): cv.string,
+        vol.Optional("dps"): list,
+    }
+)
+
+SERVICE_REFRESH_ENTITIES = "refresh_entities"
+SERVICE_REFRESH_ENTITIES_SCHEMA = vol.Schema(
+    {
+        vol.Required("entity_id"): vol.All(cv.ensure_list, [cv.entity_id]),
+    }
 )
 
 
@@ -68,37 +71,65 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
     async def _handle_update_dps(call: ServiceCall):
         """Handle update_dps service call - sends UPDATEDPS command."""
-        entity_id = call.data.get("entity_id")
-        dev_id = call.data.get(CONF_DEVICE_ID)
+        dev_id = call.data[CONF_DEVICE_ID]
+        data = hass.data.get(DOMAIN, {}).get(dev_id)
+        if not data or "device" not in data:
+            raise HomeAssistantError(f"Device {dev_id} not found")
 
-        if entity_id:
-            device, entity_dps = _find_device_and_dps(hass, entity_id)
-            if device is None:
-                raise HomeAssistantError(f"Entity {entity_id} not found")
-            dps = call.data.get("dps") or entity_dps
-        else:
-            data = hass.data.get(DOMAIN, {}).get(dev_id)
-            if not data or "device" not in data:
-                raise HomeAssistantError(f"Device {dev_id} not found")
-            device = data["device"]
-            dps = call.data.get("dps")
-            if dps is None:
-                dps = device._force_dps or [18, 19, 20]
-
+        device = data["device"]
         if not device.has_returned_state:
-            raise HomeAssistantError("Device is not connected")
+            raise HomeAssistantError(f"Device {dev_id} is not connected")
+
+        dps = call.data.get("dps")
+        if dps is None:
+            dps = device._force_dps or [18, 19, 20]
 
         try:
             async with device._api_lock:
                 await hass.async_add_executor_job(device._api.updatedps, dps, True)
         except Exception as e:
-            _LOGGER.warning("update_dps failed: %s", e)
+            _LOGGER.warning("update_dps failed for %s: %s", dev_id, e)
+
+    async def _handle_refresh_entities(call: ServiceCall):
+        """Handle refresh_entities service call - refreshes DPS for given entities."""
+        entity_ids = call.data["entity_id"]
+        devices_dps = {}
+
+        for eid in entity_ids:
+            device, dps = _find_device_and_dps(hass, eid)
+            if device is None:
+                _LOGGER.warning("refresh_entities: entity %s not found", eid)
+                continue
+            key = id(device)
+            if key not in devices_dps:
+                devices_dps[key] = {"device": device, "dps": set()}
+            devices_dps[key]["dps"].update(dps)
+
+        for entry in devices_dps.values():
+            device = entry["device"]
+            dps = list(entry["dps"])
+            if not device.has_returned_state:
+                _LOGGER.warning("refresh_entities: device not connected, skipping")
+                continue
+            try:
+                async with device._api_lock:
+                    await hass.async_add_executor_job(
+                        device._api.updatedps, dps, True
+                    )
+            except Exception as e:
+                _LOGGER.warning("refresh_entities failed: %s", e)
 
     hass.services.async_register(
         DOMAIN,
         SERVICE_UPDATE_DPS,
         _handle_update_dps,
         schema=SERVICE_UPDATE_DPS_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH_ENTITIES,
+        _handle_refresh_entities,
+        schema=SERVICE_REFRESH_ENTITIES_SCHEMA,
     )
 
     return True
