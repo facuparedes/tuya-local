@@ -99,7 +99,7 @@ class TuyaLocalEntity:
     @property
     def extra_state_attributes(self):
         """Get additional attributes that the platform itself does not support."""
-        attr = {}
+        attr = {"tuya_device_id": self._device.unique_id}
         for a in self._attr_dps:
             value = a.get_value(self._device)
             if value is not None or not a.optional:
