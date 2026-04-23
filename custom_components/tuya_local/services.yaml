@@ -25,16 +25,24 @@ update_dps:
   name: "Update DPs"
   description: "Request the device to report current values for specified datapoints (sends UPDATEDPS 0x12 command)"
   fields:
+    entity_id:
+      name: "Entity"
+      description: "A tuya_local entity. The device and its DPs will be derived automatically."
+      required: false
+      example: switch.my_plug
+      selector:
+        entity:
+          integration: tuya_local
     device_id:
       name: "Device ID"
-      description: The Tuya device ID to request updated DP values from
-      required: true
+      description: "The Tuya device ID. Use this or Entity, not both."
+      required: false
       example: 11100118278aab4de001
       selector:
         text:
     dps:
       name: "DPs"
-      description: "List of DP indexes to refresh. If omitted, the device's force_dps list will be used, or defaults to [18, 19, 20]."
+      description: "List of DP indexes to refresh. If omitted and using Entity, all DPs of that entity are refreshed. If omitted and using Device ID, defaults to the device's force_dps or [18, 19, 20]."
       required: false
       example: "[18, 19, 20]"
       selector:
