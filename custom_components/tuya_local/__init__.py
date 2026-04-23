@@ -60,7 +60,11 @@ def _find_device_and_dps(hass, entity_id):
         device = dev_data["device"]
         for child in device._children:
             if getattr(child, "entity_id", None) == entity_id:
-                dps = [int(dp.id) for dp in child._config.dps()]
+                dps = [
+                    int(dp.id)
+                    for dp in child._config.dps()
+                    if not dp.optional
+                ]
                 return device, dps
     return None, None
 
