@@ -642,7 +642,7 @@ class TuyaLocalDevice(object):
     def _set_values(self, properties):
         try:
             self._lock.acquire()
-            self._api.set_multiple_values(properties, nowait=True)
+            result = self._api.set_multiple_values(properties, nowait=False)
             self._cached_state["updated_at"] = 0
             now = time()
             self._last_connection = now
@@ -650,6 +650,7 @@ class TuyaLocalDevice(object):
             for key in properties.keys():
                 pending_updates[key]["updated_at"] = now
                 pending_updates[key]["sent"] = True
+            return result
         finally:
             self._lock.release()
 
