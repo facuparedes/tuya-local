@@ -345,7 +345,9 @@ def test_set_values(subject, mock_api):
     subject._set_values({"1": "sample"})
 
     # did it send what it was asked?
-    mock_api().set_multiple_values.assert_called_once_with({"1": "sample"}, nowait=False)
+    mock_api().set_multiple_values.assert_called_once_with(
+        {"1": "sample"}, nowait=False
+    )
     # did it mark the pending updates as sent?
     assert subject._pending_updates["1"]["sent"]
     # did it update the time on the pending updates?
