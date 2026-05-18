@@ -61,11 +61,7 @@ def _find_device_and_dps(hass, entity_id):
         device = dev_data["device"]
         for child in device._children:
             if getattr(child, "entity_id", None) == entity_id:
-                dps = [
-                    int(dp.id)
-                    for dp in child._config.dps()
-                    if not dp.optional
-                ]
+                dps = [int(dp.id) for dp in child._config.dps() if not dp.optional]
                 return device, dps
     return None, None
 
@@ -117,9 +113,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
                 continue
             try:
                 async with device._api_lock:
-                    await hass.async_add_executor_job(
-                        device._api.updatedps, dps, True
-                    )
+                    await hass.async_add_executor_job(device._api.updatedps, dps, True)
             except Exception as e:
                 _LOGGER.warning("refresh_entities failed: %s", e)
 
