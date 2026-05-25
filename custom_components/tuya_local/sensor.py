@@ -8,6 +8,7 @@ from homeassistant.components.sensor import (
     STATE_CLASSES,
     SensorDeviceClass,
     SensorEntity,
+    SensorStateClass,
 )
 
 from .device import TuyaLocalDevice
@@ -16,6 +17,8 @@ from .helpers.config import async_tuya_setup_platform
 from .helpers.device_config import TuyaEntityConfig
 
 _LOGGER = logging.getLogger(__name__)
+
+TOTAL_INCREASING_RESET_THRESHOLD = 0.5
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -45,6 +48,7 @@ class TuyaLocalSensor(TuyaLocalEntity, SensorEntity):
         if self._sensor_dps is None:
             raise AttributeError(f"{config.config_id} is missing a sensor dps")
         self._unit_dps = dps_map.pop("unit", None)
+        self._last_total_increasing_value = None
 
         self._init_end(dps_map)
 
@@ -73,7 +77,29 @@ class TuyaLocalSensor(TuyaLocalEntity, SensorEntity):
     @property
     def native_value(self):
         """Return the value reported by the sensor"""
-        return self._sensor_dps.get_value(self._device)
+        value = self._sensor_dps.get_value(self._device)
+
+        if (
+            self.state_class == SensorStateClass.TOTAL_INCREASING
+            and value is not None
+            and self._last_total_increasing_value is not None
+            and isinstance(value, (int, float))
+        ):
+            last = self._last_total_increasing_value
+            if value < last:
+                if value > last * TOTAL_INCREASING_RESET_THRESHOLD:
+                    _LOGGER.debug(
+                        "%s: Ignoring decreasing total_increasing value %s (last: %s)",
+                        self.name,
+                        value,
+                        last,
+                    )
+                    return last
+
+        if value is not None and isinstance(value, (int, float)):
+            self._last_total_increasing_value = value
+
+        return value
 
     @property
     def native_unit_of_measurement(self):
